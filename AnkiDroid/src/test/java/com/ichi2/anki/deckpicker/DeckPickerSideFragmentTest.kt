@@ -4,9 +4,14 @@ package com.ichi2.anki.deckpicker
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.view.View.MeasureSpec
 import android.widget.Button
+import android.widget.ScrollView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commit
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ichi2.anki.DeckPicker
@@ -41,6 +46,7 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
@@ -299,6 +305,57 @@ class DeckPickerSideFragmentTest : RobolectricTest() {
             assertThat(deckPicker.sidePane().content, equalTo(Content.REMINDERS))
         }
 
+    @Test
+    fun `selecting another deck scrolls study options to the top, the same deck keeps the position`() =
+        runTest {
+            val anotherDeck = addDeck("Another deck")
+            val deckPicker = startDeckPicker().get()
+            val scroll = requireNotNull(deckPicker.fragment).layoutScrollableContent()
+            scroll.scrollTo(0, 200)
+
+            deckPicker.viewModel.selectDeck(col.decks.selected()).join()
+            advanceRobolectricLooper()
+            assertThat("same deck", scroll.scrollY, equalTo(200))
+
+            deckPicker.viewModel.selectDeck(anotherDeck).join()
+            advanceRobolectricLooper()
+            assertThat("another deck", scroll.scrollY, equalTo(0))
+        }
+
+    @Test
+    fun `returning from reminders keeps the study options scroll position`() =
+        runTest {
+            val deckPicker = startDeckPicker().get()
+            val studyOptions = requireNotNull(deckPicker.fragment)
+            studyOptions.layoutScrollableContent().scrollTo(0, 200)
+
+            deckPicker.sidePane().showReminders(col.decks.selected())
+            advanceRobolectricLooper()
+            deckPicker.onBackPressedDispatcher.onBackPressed()
+            advanceRobolectricLooper()
+
+            assertThat(studyOptions.layoutScrollableContent().scrollY, equalTo(200))
+        }
+
+    @Test
+    fun `restored pane resets the study options scroll position only if the deck changed`() =
+        runTest {
+            val anotherDeck = addDeck("Another deck")
+            for (deckChanged in listOf(false, true)) {
+                val controller = startDeckPicker()
+                requireNotNull(controller.get().fragment).layoutScrollableContent().scrollTo(0, 200)
+                val savedState = controller.saveAndDestroy()
+                // for example, a home screen shortcut studying another deck
+                if (deckChanged) col.decks.select(anotherDeck)
+
+                val restored = restoreDeckPicker(savedState)
+
+                val scrollY = requireNotNull(restored.fragment).layoutScrollableContent().scrollY
+                assertThat("deck changed: $deckChanged", scrollY, equalTo(if (deckChanged) 0 else 200))
+                col.decks.select(1L)
+            }
+        }
+
     private fun startDeckPicker(): ActivityController<DeckPicker> =
         startActivityControllerNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent()).also {
             advanceRobolectricLooper()
@@ -314,6 +371,55 @@ class DeckPickerSideFragmentTest : RobolectricTest() {
         get().viewModel.reloadDeckCounts().join()
         advanceRobolectricLooper()
     }
+
+    /** Saves the state of the activity, then destroys it, as if its process were killed */
+    private fun ActivityController<DeckPicker>.saveAndDestroy(): Bundle =
+        Bundle().also { savedState ->
+            pause().stop().saveInstanceState(savedState).destroy()
+        }
+
+    private fun restoreDeckPicker(savedState: Bundle): DeckPicker {
+        val controller = Robolectric.buildActivity(DeckPicker::class.java, Intent()).create(savedState)
+        saveControllerForCleanup(controller)
+        // before the restored views are created
+        controller.get().makeStudyOptionsScrollable()
+        controller
+            .start()
+            .restoreInstanceState(savedState)
+            .postCreate(savedState)
+            .resume()
+            .visible()
+        advanceRobolectricLooper()
+        return controller.get()
+    }
+
+    /** Gives created study options scrollable content without depending on font metrics */
+    private fun DeckPicker.makeStudyOptionsScrollable() {
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            object : FragmentManager.FragmentLifecycleCallbacks() {
+                override fun onFragmentViewCreated(
+                    fm: FragmentManager,
+                    f: Fragment,
+                    v: View,
+                    savedInstanceState: Bundle?,
+                ) {
+                    if (f is StudyOptionsFragment) v.scrollContent.minimumHeight = SCROLLABLE_HEIGHT
+                }
+            },
+            true,
+        )
+    }
+
+    /** Lays out the study options with scrollable content, returning its [ScrollView] */
+    private fun StudyOptionsFragment.layoutScrollableContent(): ScrollView =
+        requireView().findViewById<ScrollView>(R.id.studyoptions_scrollview).apply {
+            getChildAt(0).minimumHeight = SCROLLABLE_HEIGHT
+            measure(MeasureSpec.makeMeasureSpec(400, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(300, MeasureSpec.EXACTLY))
+            layout(0, 0, 400, 300)
+        }
+
+    private val View.scrollContent: View
+        get() = findViewById<ScrollView>(R.id.studyoptions_scrollview).getChildAt(0)
 
     private fun DeckPicker.sidePane() = requireNotNull(sidePane) { "sidePane" }
 
@@ -335,5 +441,9 @@ class DeckPickerSideFragmentTest : RobolectricTest() {
     private fun DeckPicker.syncConflictDialog(): AlertDialog {
         val fragment = supportFragmentManager.findFragmentByTag(DIALOG_FRAGMENT_TAG) as SyncErrorDialog
         return fragment.dialog as AlertDialog
+    }
+
+    companion object {
+        private const val SCROLLABLE_HEIGHT = 10000
     }
 }

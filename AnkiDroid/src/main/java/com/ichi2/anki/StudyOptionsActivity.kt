@@ -75,11 +75,14 @@ class StudyOptionsActivity :
         addMenuProvider(menuProvider)
 
         setFragmentResultListener(REQUEST_KEY) { _, bundle ->
+            val studyOptions = currentFragment as? StudyOptionsFragment
             when (CustomStudyAction.fromBundle(bundle)) {
-                CustomStudyAction.CUSTOM_STUDY_SESSION,
-                CustomStudyAction.EXTEND_STUDY_LIMITS,
-                ->
-                    (currentFragment as? StudyOptionsFragment)?.refreshInterface()
+                CustomStudyAction.CUSTOM_STUDY_SESSION -> {
+                    // the custom study session is a new deck
+                    studyOptions?.scrollToTop()
+                    studyOptions?.refreshInterface()
+                }
+                CustomStudyAction.EXTEND_STUDY_LIMITS -> studyOptions?.refreshInterface()
             }
         }
         supportFragmentManager.registerStudyOptionsStudyHandler(this) {

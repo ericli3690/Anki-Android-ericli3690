@@ -30,7 +30,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.children
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
-import androidx.fragment.app.commitNow
 import androidx.test.core.app.ActivityScenario
 import androidx.test.filters.SdkSuppress
 import anki.backend.backendError
@@ -916,34 +915,6 @@ class DeckPickerTest : RobolectricTest() {
                 assertEquals(if (selectAnotherDeck) anotherDeck else 1L, studyOptions.viewModel.selectedDeckId)
                 val restoredScroll = studyOptions.layoutScroll()
                 assertEquals(if (selectAnotherDeck) 0 else 200, restoredScroll.scrollY)
-            }
-        }
-    }
-
-    @Test
-    fun `restored study options associates saved scroll with its deck`() {
-        assumeTrue("We are running on a tablet", qualifiers!!.contains("xlarge"))
-        addBasicNote()
-        val anotherDeck = addDeck("Another deck")
-        addNoteToDeck(anotherDeck, count = 2)
-
-        deckPicker {
-            makeStudyOptionsScrollable()
-            for (deckId in listOf(1L, anotherDeck)) {
-                val studyOptions = assertNotNull(fragment)
-                studyOptions.layoutScroll().scrollTo(0, 200)
-                val sidePaneFragmentManager = assertNotNull(sidePane).childFragmentManager
-                val savedState = sidePaneFragmentManager.saveFragmentInstanceState(studyOptions)
-                viewModel.selectDeck(deckId).join()
-                advanceRobolectricLooper()
-
-                // Recreate the fragment from its saved state, including its view hierarchy.
-                val restored = StudyOptionsFragment().apply { setInitialSavedState(savedState) }
-                sidePaneFragmentManager.commitNow { replace(R.id.side_pane_content, restored) }
-                advanceRobolectricLooper()
-
-                assertEquals(deckId, restored.viewModel.selectedDeckId)
-                assertEquals(if (deckId == 1L) 200 else 0, restored.layoutScroll().scrollY)
             }
         }
     }

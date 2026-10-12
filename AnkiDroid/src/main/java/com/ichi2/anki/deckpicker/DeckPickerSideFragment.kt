@@ -165,14 +165,16 @@ class DeckPickerSideFragment :
     }
 
     /**
-     * Informs the pane of the selected deck. If the deck changed, the overlay is closed.
-     * The same deck (for example, replayed after recreation) is ignored.
+     * Informs the pane of the selected deck. If the deck changed, the overlay is closed and the
+     * study options are scrolled to the top. The same deck (for example, replayed after
+     * recreation) is ignored, keeping the overlay and scroll position.
      */
     fun onSelectedDeckChanged(deckId: DeckId) {
         if (deckId == selectedDeckId) return
         Timber.d("Side pane: selected deck changed to %d", deckId)
         selectedDeckId = deckId
         closeOverlay()
+        studyOptions?.scrollToTop()
         refresh()
     }
 

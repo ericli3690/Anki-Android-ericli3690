@@ -8,11 +8,15 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.view.menu.MenuBuilder
+import androidx.core.os.bundleOf
 import androidx.fragment.app.commitNow
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ichi2.anki.CollectionManager.TR
+import com.ichi2.anki.common.destinations.StudyOptionsDestination
+import com.ichi2.anki.common.destinations.launchActivity
+import com.ichi2.anki.dialogs.customstudy.CustomStudyDialog.CustomStudyAction
 import com.ichi2.anki.ui.internationalization.sentenceCase
 import com.ichi2.testutils.ext.triggerDeckNotFoundInLimitsMap
 import com.ichi2.testutils.launchFragmentInContainer
@@ -61,15 +65,10 @@ class StudyOptionsFragmentTest : RobolectricTest() {
         }
 
     @Test
-    fun `scroll position is retained on refresh and reset for another deck`() =
+    fun `scroll position is retained on refresh and reset by scrollToTop`() =
         runTest {
-            val anotherDeck = addDeck("Another deck")
             withStudyOptions {
-                val scroll = requireView().findViewById<ScrollView>(R.id.studyoptions_scrollview)
-                // Give the pane scrollable content without depending on font metrics.
-                scroll.getChildAt(0).minimumHeight = 2000
-                scroll.measure(MeasureSpec.makeMeasureSpec(400, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(300, MeasureSpec.EXACTLY))
-                scroll.layout(0, 0, 400, 300)
+                val scroll = layoutScrollableContent()
                 scroll.scrollTo(0, 200)
                 assertEquals(200, scroll.scrollY)
 
@@ -77,10 +76,40 @@ class StudyOptionsFragmentTest : RobolectricTest() {
                 refreshAndAwait()
                 assertEquals(200, scroll.scrollY)
 
-                col.decks.select(anotherDeck)
-                refreshAndAwait()
+                scrollToTop()
                 assertEquals(0, scroll.scrollY)
             }
+        }
+
+    @Test
+    fun `custom study session resets the scroll position of the study options screen`() =
+        runTest {
+            addBasicNote()
+            launchActivity<StudyOptionsActivity>(StudyOptionsDestination).use { scenario ->
+                advanceUntilIdle()
+                advanceRobolectricLooper()
+                scenario.onActivity { activity ->
+                    val studyOptions = activity.supportFragmentManager.findFragmentById(R.id.studyoptions_frame) as StudyOptionsFragment
+                    val scroll = studyOptions.layoutScrollableContent()
+                    scroll.scrollTo(0, 200)
+
+                    activity.supportFragmentManager.setFragmentResult(
+                        CustomStudyAction.REQUEST_KEY,
+                        bundleOf(CustomStudyAction.BUNDLE_KEY to CustomStudyAction.CUSTOM_STUDY_SESSION.ordinal),
+                    )
+                    advanceRobolectricLooper()
+
+                    assertEquals(0, scroll.scrollY)
+                }
+            }
+        }
+
+    /** Gives the screen scrollable content without depending on font metrics. */
+    private fun StudyOptionsFragment.layoutScrollableContent(): ScrollView =
+        requireView().findViewById<ScrollView>(R.id.studyoptions_scrollview).apply {
+            getChildAt(0).minimumHeight = 2000
+            measure(MeasureSpec.makeMeasureSpec(400, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(300, MeasureSpec.EXACTLY))
+            layout(0, 0, 400, 300)
         }
 
     /** Issue 22348: replacing the tablet panel can detach it before its initial refresh starts. */
