@@ -87,7 +87,7 @@ class ScheduleRemindersFragment :
      * fragment is opened from / nested within.
      *
      * This fragment applies the system bar insets to its own views. Hosts which show it below a
-     * toolbar of their own ([STUDY_OPTIONS_FRAGMENT] and [STUDY_OPTIONS_FRAME]) consume the insets
+     * toolbar of their own ([DECK_PICKER_SIDE_PANE] and [STUDY_OPTIONS_FRAME]) consume the insets
      * which they have already cleared, so that they are not applied a second time here.
      *
      * @param containerId The XML ID of the container in which this fragment is hosted.
@@ -109,10 +109,10 @@ class ScheduleRemindersFragment :
 
         /**
          * Side-by-side view of a specific deck's review reminders on large screens.
-         * @see com.ichi2.anki.DeckPicker.tryShowScheduleRemindersPanel
+         * @see com.ichi2.anki.deckpicker.DeckPickerSideFragment.showReminders
          */
-        STUDY_OPTIONS_FRAGMENT(
-            containerId = R.id.studyoptions_fragment,
+        DECK_PICKER_SIDE_PANE(
+            containerId = R.id.side_pane_overlay_content,
             toolbarType = ToolbarType.INTERNAL_NON_COLLAPSIBLE,
         ),
 

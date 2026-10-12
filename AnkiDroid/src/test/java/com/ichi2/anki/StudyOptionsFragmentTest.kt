@@ -32,6 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -99,16 +100,18 @@ class StudyOptionsFragmentTest : RobolectricTest() {
             val replacement = StudyOptionsFragment()
             lateinit var removedViewModel: StudyOptionsViewModel
 
+            val sidePaneFragmentManager = assertNotNull(activity.sidePane).childFragmentManager
+
             activity.lifecycleScope
                 .launch {
                     // Main.immediate queues the nested refresh until this coroutine yields.
-                    activity.supportFragmentManager.commitNow {
-                        replace(R.id.studyoptions_fragment, removedFragment)
+                    sidePaneFragmentManager.commitNow {
+                        replace(R.id.side_pane_content, removedFragment)
                     }
                     removedViewModel = removedFragment.viewModel
                     assertIs<StudyOptionsState.Loading>(removedViewModel.state)
-                    activity.supportFragmentManager.commitNow {
-                        replace(R.id.studyoptions_fragment, replacement)
+                    sidePaneFragmentManager.commitNow {
+                        replace(R.id.side_pane_content, replacement)
                     }
                 }.join()
             advanceUntilIdle()

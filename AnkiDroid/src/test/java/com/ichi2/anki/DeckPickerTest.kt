@@ -126,6 +126,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -694,8 +695,7 @@ class DeckPickerTest : RobolectricTest() {
                 DeckPickerEx::class.java,
                 Intent(),
             )
-        val studyOptionsFragment =
-            deckPickerEx.supportFragmentManager.findFragmentById(R.id.studyoptions_fragment) as StudyOptionsFragment?
+        val studyOptionsFragment = deckPickerEx.fragment
         assertThat(
             "Study options should show on start on tablet",
             studyOptionsFragment,
@@ -817,7 +817,7 @@ class DeckPickerTest : RobolectricTest() {
 
             reloadDecks()
 
-            assertSame(reminders, sidePanel)
+            assertSame(reminders, sidePaneOverlay)
             assertTrue(dialog.isShowing)
         }
 
@@ -831,7 +831,7 @@ class DeckPickerTest : RobolectricTest() {
             advanceRobolectricLooper()
 
             assertFalse(dialog.isShowing)
-            assertSame(reminders, sidePanel)
+            assertSame(reminders, sidePaneOverlay)
         }
 
     @Test
@@ -842,6 +842,7 @@ class DeckPickerTest : RobolectricTest() {
             reminders.navigateUp()
 
             assertNotNull(fragment)
+            assertNull(sidePaneOverlay)
             assertEquals(0, supportFragmentManager.backStackEntryCount)
         }
 
@@ -854,6 +855,7 @@ class DeckPickerTest : RobolectricTest() {
             advanceRobolectricLooper()
 
             assertEquals(anotherDeck, assertNotNull(fragment).viewModel.selectedDeckId)
+            assertNull(sidePaneOverlay)
             assertEquals(0, supportFragmentManager.backStackEntryCount)
         }
 
@@ -872,7 +874,7 @@ class DeckPickerTest : RobolectricTest() {
             repeat(2) {
                 selectContextMenuOption(ContextMenuOption.SCHEDULE_REMINDERS, studyOptions.viewModel.selectedDeckId)
                 advanceRobolectricLooper()
-                val reminders = requireNotNull(sidePanel as? ScheduleRemindersFragment)
+                val reminders = requireNotNull(sidePaneOverlay as? ScheduleRemindersFragment)
                 reminders.navigateUp()
 
                 assertSame(studyOptions, fragment)
@@ -902,7 +904,7 @@ class DeckPickerTest : RobolectricTest() {
 
                 selectContextMenuOption(ContextMenuOption.SCHEDULE_REMINDERS, studyOptions.viewModel.selectedDeckId)
                 advanceRobolectricLooper()
-                val reminders = assertNotNull(sidePanel as? ScheduleRemindersFragment)
+                val reminders = assertNotNull(sidePaneOverlay as? ScheduleRemindersFragment)
                 if (selectAnotherDeck) {
                     viewModel.selectDeck(anotherDeck).join()
                     advanceRobolectricLooper()
@@ -930,13 +932,14 @@ class DeckPickerTest : RobolectricTest() {
             for (deckId in listOf(1L, anotherDeck)) {
                 val studyOptions = assertNotNull(fragment)
                 studyOptions.layoutScroll().scrollTo(0, 200)
-                val savedState = supportFragmentManager.saveFragmentInstanceState(studyOptions)
+                val sidePaneFragmentManager = assertNotNull(sidePane).childFragmentManager
+                val savedState = sidePaneFragmentManager.saveFragmentInstanceState(studyOptions)
                 viewModel.selectDeck(deckId).join()
                 advanceRobolectricLooper()
 
                 // Recreate the fragment from its saved state, including its view hierarchy.
                 val restored = StudyOptionsFragment().apply { setInitialSavedState(savedState) }
-                supportFragmentManager.commitNow { replace(R.id.studyoptions_fragment, restored) }
+                sidePaneFragmentManager.commitNow { replace(R.id.side_pane_content, restored) }
                 advanceRobolectricLooper()
 
                 assertEquals(deckId, restored.viewModel.selectedDeckId)
@@ -962,7 +965,7 @@ class DeckPickerTest : RobolectricTest() {
                     }
                 }
             },
-            false,
+            true,
         )
     }
 
@@ -979,12 +982,13 @@ class DeckPickerTest : RobolectricTest() {
         deckPicker {
             selectContextMenuOption(ContextMenuOption.SCHEDULE_REMINDERS, getColUnsafe.decks.selected())
             advanceRobolectricLooper()
-            test(requireNotNull(sidePanel as? ScheduleRemindersFragment))
+            test(requireNotNull(sidePaneOverlay as? ScheduleRemindersFragment))
         }
     }
 
-    private val DeckPicker.sidePanel
-        get() = supportFragmentManager.findFragmentById(R.id.studyoptions_fragment)
+    /** The screen covering the study options in the side pane, if any */
+    private val DeckPicker.sidePaneOverlay
+        get() = sidePane?.overlay
 
     private suspend fun DeckPicker.reloadDecks() {
         viewModel.reloadDeckCounts().join()
@@ -1047,7 +1051,7 @@ class DeckPickerTest : RobolectricTest() {
             scenario.onActivity { deckPicker ->
                 assertThat(
                     "side panel fragment should be displayed on tablet",
-                    deckPicker.supportFragmentManager.findFragmentById(R.id.studyoptions_fragment),
+                    deckPicker.supportFragmentManager.findFragmentById(R.id.deck_picker_side_pane),
                     notNullValue(),
                 )
             }
@@ -1059,7 +1063,7 @@ class DeckPickerTest : RobolectricTest() {
             scenario.onActivity { deckPicker ->
                 assertThat(
                     "restored side panel fragment must be pruned in single-pane layout",
-                    deckPicker.supportFragmentManager.findFragmentById(R.id.studyoptions_fragment),
+                    deckPicker.supportFragmentManager.findFragmentById(R.id.deck_picker_side_pane),
                     nullValue(),
                 )
                 assertThat(
@@ -1394,7 +1398,7 @@ class DeckPickerTest : RobolectricTest() {
             assumeTrue("Not running on tablet", qualifiers != "xlarge")
             deckPicker {
                 val bottomNav = ActivityHomescreenBinding.bind(findViewById(R.id.root_layout)).bottomNavigation!!
-                val longTitle = "Statistikenübersicht"
+                val longTitle = "StatistikenÃ¼bersicht"
 
                 bottomNav.menu.findItem(R.id.nav_stats).title = longTitle
 

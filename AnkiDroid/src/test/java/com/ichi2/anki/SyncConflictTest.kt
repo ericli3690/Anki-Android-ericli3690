@@ -3,15 +3,19 @@
 package com.ichi2.anki
 
 import android.content.DialogInterface
+import android.content.Intent
 import androidx.appcompat.app.AlertDialog
 import anki.sync.SyncAuth
 import anki.sync.SyncCollectionResponse
 import anki.sync.syncCollectionResponse
 import app.cash.turbine.test
+import com.ichi2.anki.CollectionManager.withCol
+import com.ichi2.anki.common.preferences.sharedPrefs
 import com.ichi2.anki.dialogs.SyncErrorDialog
 import com.ichi2.anki.dialogs.utils.message
 import com.ichi2.anki.settings.Prefs
 import com.ichi2.anki.utils.ext.DIALOG_FRAGMENT_TAG
+import com.ichi2.testutils.BackupManagerTestUtilities
 import com.ichi2.utils.negativeButton
 import com.ichi2.utils.positiveButton
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +57,9 @@ class SyncConflictTest : RobolectricTest() {
     @Before
     fun setUpConflict() {
         RuntimeEnvironment.setQualifiers(qualifiers)
+        // avoid unrelated startup dialogs replacing the conflict dialog after recreation
+        BackupManagerTestUtilities.setupSpaceForBackup(targetContext)
+        InitialActivity.setUpgradedToLatestVersion(targetContext.sharedPrefs())
         runBlocking { CollectionManager.discardBackend() }
         BackendFactory.setOverride {
             object : Backend() {
@@ -70,6 +77,7 @@ class SyncConflictTest : RobolectricTest() {
     @After
     fun resetBackendFactory() {
         BackendFactory.setOverride(null)
+        BackupManagerTestUtilities.reset()
     }
 
     @Test
@@ -94,6 +102,33 @@ class SyncConflictTest : RobolectricTest() {
             dialog.clickButton(DialogInterface.BUTTON_NEUTRAL)
 
             assertFalse(dialog.isShowing)
+        }
+
+    @Test
+    fun `sync conflict survives recreation`() =
+        runTest {
+            setIntroductionSlidesShown(true)
+            val controller = startActivityControllerNormallyOpenCollectionWithIntent(DeckPicker::class.java, Intent())
+            controller.get().syncWithConflict()
+
+            controller.recreate()
+            advanceRobolectricLooper()
+
+            assertTrue(controller.get().conflictDialog().isShowing)
+        }
+
+    @Test
+    fun `sync conflict survives reload after the selected deck changes`() =
+        deckPicker {
+            val anotherDeck = addDeck("Another Deck")
+            syncWithConflict()
+            val dialog = conflictDialog()
+
+            withCol { decks.select(anotherDeck) }
+            reloadDecks()
+
+            assertTrue(dialog.isShowing)
+            assertTrue(conflictDialog().isShowing)
         }
 
     @Test

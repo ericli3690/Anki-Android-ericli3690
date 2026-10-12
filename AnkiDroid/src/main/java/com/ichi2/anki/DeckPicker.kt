@@ -58,9 +58,6 @@ import androidx.core.view.WindowInsetsCompat.Type.systemBars
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.draganddrop.DropHelper
-import androidx.fragment.app.FragmentContainerView
-import androidx.fragment.app.FragmentManager
-import androidx.fragment.app.commit
 import androidx.fragment.app.commitNow
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
@@ -86,7 +83,6 @@ import com.ichi2.anki.InitialActivity.StartupFailure.DiskFull
 import com.ichi2.anki.InitialActivity.StartupFailure.FutureAnkidroidVersion
 import com.ichi2.anki.InitialActivity.StartupFailure.SDCardNotMounted
 import com.ichi2.anki.InitialActivity.StartupFailure.StorageUndecided
-import com.ichi2.anki.StudyOptionsFragment.Companion.registerStudyOptionsAddEditReminderHandler
 import com.ichi2.anki.StudyOptionsFragment.Companion.registerStudyOptionsStudyHandler
 import com.ichi2.anki.account.AccountActivity
 import com.ichi2.anki.analytics.AnkiDroidUsageAnalytics
@@ -118,6 +114,7 @@ import com.ichi2.anki.databinding.IncludeDeckPickerBinding
 import com.ichi2.anki.databinding.IncludeFloatingAddButtonBinding
 import com.ichi2.anki.deckpicker.BackgroundImage
 import com.ichi2.anki.deckpicker.DeckDeletionResult
+import com.ichi2.anki.deckpicker.DeckPickerSideFragment
 import com.ichi2.anki.deckpicker.DeckPickerViewModel
 import com.ichi2.anki.deckpicker.DeckPickerViewModel.AnkiDroidEnvironment
 import com.ichi2.anki.deckpicker.DeckPickerViewModel.FlattenedDeckList
@@ -164,9 +161,7 @@ import com.ichi2.anki.pages.AnkiPackageImporterFragment
 import com.ichi2.anki.pages.CongratsPage
 import com.ichi2.anki.pages.CongratsPage.Companion.onDeckCompleted
 import com.ichi2.anki.receiver.SdCardReceiver
-import com.ichi2.anki.reviewreminders.ReviewReminderScope
 import com.ichi2.anki.reviewreminders.ReviewRemindersDatabase
-import com.ichi2.anki.reviewreminders.ScheduleRemindersFragment
 import com.ichi2.anki.servicelayer.ScopedStorageService
 import com.ichi2.anki.settings.Prefs
 import com.ichi2.anki.settings.enums.DayTheme
@@ -283,7 +278,7 @@ open class DeckPicker :
     val floatingActionButtonBinding: IncludeFloatingAddButtonBinding
         get() = deckPickerBinding.floatingActionButton
     override var fragmented: Boolean
-        get() = binding.studyoptionsFragment != null
+        get() = binding.deckPickerSidePane != null
         set(_) = throw UnsupportedOperationException()
 
     override val analyticsScreenName: String
@@ -530,10 +525,15 @@ open class DeckPicker :
             // A restored fragment without its container is never displayed, but it would
             // still reach its view lifecycle and register its menu items with this
             // activity. Remove it before that happens. See #21555.
-            supportFragmentManager.findFragmentById(R.id.studyoptions_fragment)?.let { restoredFragment ->
+            supportFragmentManager.findFragmentById(R.id.deck_picker_side_pane)?.let { restoredFragment ->
                 supportFragmentManager.commitNow {
                     remove(restoredFragment)
                 }
+            }
+        } else if (sidePane == null) {
+            // Added for each activity instance: a restored pane is reused, keeping its content
+            supportFragmentManager.commitNow {
+                add(R.id.deck_picker_side_pane, DeckPickerSideFragment())
             }
         }
         enableToolbar()
@@ -627,14 +627,11 @@ open class DeckPicker :
             handleContextMenuSelection(result.option, result.deckId)
         }
 
+        // On large screens, StudyOptionsFragment is inside DeckPickerSideFragment. The pane opens
+        // review reminders itself, and forwards requests to study here.
         supportFragmentManager.registerStudyOptionsStudyHandler(this) {
             Timber.d("Opening study screen from DeckPicker's study options panel")
             openReviewer()
-        }
-
-        supportFragmentManager.registerStudyOptionsAddEditReminderHandler(this) { did: DeckId ->
-            Timber.d("Opening review reminders screen from DeckPicker's study options panel")
-            openScheduleReminders(did)
         }
 
         pullToSyncWrapper.configureView(
@@ -742,7 +739,7 @@ open class DeckPicker :
             raiseFabAboveSummary(measuredHeight - paddingBottom)
         }
         if (fragmented) {
-            val studyoptionsView = binding.studyoptionsFragment ?: return
+            val studyoptionsView = binding.deckPickerSidePane ?: return
             ViewCompat.setOnApplyWindowInsetsListener(studyoptionsView) { _, insets ->
                 val bars = insets.getInsets(systemBars() or displayCutout())
                 // the toolbar clears the top and the deck list clears the left: the panel's
@@ -876,7 +873,7 @@ open class DeckPicker :
 
         fun onStudyOptionsVisibilityChanged(collectionHasNoCards: Boolean) {
             invalidateOptionsMenu()
-            binding.studyoptionsFrame?.isVisible = !collectionHasNoCards
+            binding.deckPickerSidePane?.isVisible = !collectionHasNoCards
         }
 
         fun onDeckListChanged(deckList: FlattenedDeckList) {
@@ -888,7 +885,7 @@ open class DeckPicker :
         }
 
         fun onFocusedDeckChanged(deckId: DeckId?) {
-            if (deckId != null) tryShowStudyOptionsPanel()
+            if (deckId != null) sidePane?.onSelectedDeckChanged(deckId)
             val position = deckId?.let { viewModel.findDeckPosition(it) } ?: 0
 
             // Skip centering if the deck is already on screen.
@@ -904,8 +901,7 @@ open class DeckPicker :
 
         fun onDecksReloaded(param: Unit) {
             hideProgressBar()
-            // TODO: Refresh deck metadata in the reminder pane
-            fragment?.refreshInterface()
+            sidePane?.refresh()
         }
 
         fun onStartupResponse(response: StartupResponse) {
@@ -925,16 +921,18 @@ open class DeckPicker :
                     invalidateOptionsMenu()
                     showStartupScreensAndDialogs(sharedPrefs(), 0)
 
-                    if (tryShowStudyOptionsPanel()) {
+                    // Only refresh: startup may rerun on recreation, which must keep the pane's content
+                    sidePane?.let { pane ->
+                        pane.refresh()
                         ResizablePaneManager(
                             parentLayout = requireNotNull(binding.deckpickerXlView) { "deckpickerXlView" },
                             divider = requireNotNull(binding.resizingDivider) { "resizingDivider" },
                             startPane = deckPickerBinding.root,
-                            endPane = requireNotNull(binding.studyoptionsFragment) { "studyoptionsFragment" },
+                            endPane = requireNotNull(binding.deckPickerSidePane) { "deckPickerSidePane" },
                             sharedPrefs = Prefs.getUiConfig(this),
                             startPaneWeightKey = PREF_DECK_PICKER_PANE_WEIGHT,
                             endPaneWeightKey = PREF_STUDY_OPTIONS_PANE_WEIGHT,
-                            onResizingChanged = { isResizing -> fragment?.onResizingChanged(isResizing) },
+                            onResizingChanged = { isResizing -> pane.onResizingChanged(isResizing) },
                         )
                     }
                 }
@@ -2071,48 +2069,30 @@ open class DeckPicker :
     /**
      * Displays [StudyOptionsFragment] in a side panel on larger devices
      *
-     * @see [ActivityHomescreenBinding.studyoptionsFragment]
+     * @see [ActivityHomescreenBinding.deckPickerSidePane]
      *
      * @return whether the panel was shown
      */
     private fun tryShowStudyOptionsPanel(): Boolean {
-        val containerId = binding.studyoptionsFragment?.id ?: return false
-
-        // Close other panels before looking for restored study options.
-        supportFragmentManager.popBackStackImmediate(
-            null,
-            FragmentManager.POP_BACK_STACK_INCLUSIVE,
-        )
-
-        val studyOptions = fragment
-        if (studyOptions != null) {
-            studyOptions.refreshInterface()
-        } else {
-            supportFragmentManager.commitNow {
-                replace(containerId, StudyOptionsFragment())
-            }
-        }
+        val sidePane = sidePane ?: return false
+        sidePane.showStudyOptions()
         return true
     }
 
     @NeedsTest("Instrumented tests for review reminders")
     private fun tryShowScheduleRemindersPanel(deckId: DeckId): Boolean {
-        val sidePanel = binding.studyoptionsFragment ?: return false
-        if (!sidePanel.isVisible) return false
-        val newFragment =
-            ScheduleRemindersFragment.newInstance(
-                scope = ReviewReminderScope.DeckSpecific(deckId),
-                host = ScheduleRemindersFragment.FragmentHost.STUDY_OPTIONS_FRAGMENT,
-            )
-        supportFragmentManager.commit {
-            replace(sidePanel.id, newFragment)
-            addToBackStack(null)
-        }
+        val sidePane = sidePane ?: return false
+        if (binding.deckPickerSidePane?.isVisible != true) return false
+        sidePane.showReminders(deckId)
         return true
     }
 
+    /** The side pane on larger devices */
+    val sidePane: DeckPickerSideFragment?
+        get() = supportFragmentManager.findFragmentById(R.id.deck_picker_side_pane) as? DeckPickerSideFragment
+
     val fragment: StudyOptionsFragment?
-        get() = supportFragmentManager.findFragmentById(R.id.studyoptions_fragment) as? StudyOptionsFragment
+        get() = sidePane?.studyOptions
 
     /**
      * Refresh the deck picker when the SD card is inserted.
@@ -2544,6 +2524,3 @@ class CollectionLoadingErrorDialog :
 
     override fun toMessage() = emptyMessage(this.what)
 }
-
-val ActivityHomescreenBinding.studyoptionsFrame: FragmentContainerView?
-    get() = studyoptionsFragment

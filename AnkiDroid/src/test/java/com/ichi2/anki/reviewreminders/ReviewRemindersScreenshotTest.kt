@@ -11,6 +11,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commit
 import androidx.test.core.app.ActivityScenario
 import com.google.android.material.appbar.AppBarLayout
+import com.ichi2.anki.DeckPicker
 import com.ichi2.anki.OptionalPermissionSet
 import com.ichi2.anki.R
 import com.ichi2.anki.ScreenshotTest
@@ -19,6 +20,7 @@ import com.ichi2.anki.common.destinations.StudyOptionsDestination
 import com.ichi2.anki.common.destinations.launchActivity
 import com.ichi2.anki.databinding.FragmentReminderTroubleshootingBinding
 import com.ichi2.anki.databinding.FragmentScheduleRemindersBinding
+import com.ichi2.anki.libanki.DeckId
 import com.ichi2.anki.preferences.PreferencesActivity
 import com.ichi2.anki.preferences.PreferencesFragment
 import com.ichi2.anki.reviewreminders.ScheduleRemindersFragment.FragmentHost
@@ -111,22 +113,17 @@ class ReviewRemindersScreenshotTest : ScreenshotTest() {
     }
 
     @Test
-    fun `study options fragment host`() {
+    fun `deck picker side pane host`() {
         setTabletQualifiers()
         withDeckPicker(deckCount = 1, withCards = true) { deckPicker ->
             val deckId = addDeck("Test Deck")
-            commitScheduleRemindersAndCapture(
-                fragmentManager = deckPicker.supportFragmentManager,
-                containerId = R.id.studyoptions_fragment,
-                host = FragmentHost.STUDY_OPTIONS_FRAGMENT,
-                scope = ReviewReminderScope.DeckSpecific(deckId),
-                prefix = "studyOptionsFragmentHost",
-            )
+            showSidePaneReminders(deckPicker, deckId)
+            captureScreen("deckPickerSidePaneHost_scheduleReminders")
             commitTroubleshootingAndCapture(
-                fragmentManager = deckPicker.supportFragmentManager,
-                containerId = R.id.studyoptions_fragment,
-                host = FragmentHost.STUDY_OPTIONS_FRAGMENT,
-                prefix = "studyOptionsFragmentHost",
+                fragmentManager = deckPicker.sidePane!!.overlay!!.parentFragmentManager,
+                containerId = R.id.side_pane_overlay_content,
+                host = FragmentHost.DECK_PICKER_SIDE_PANE,
+                prefix = "deckPickerSidePaneHost",
             )
         }
         BackupManagerTestUtilities.reset()
@@ -317,44 +314,39 @@ class ReviewRemindersScreenshotTest : ScreenshotTest() {
     }
 
     @Test
-    fun `study options fragment host with system bars and a scrollable list`() {
+    fun `deck picker side pane host with system bars and a scrollable list`() {
         setTabletQualifiers()
         withDeckPicker(deckCount = 1, withCards = true) { deckPicker ->
-            val scope = ReviewReminderScope.DeckSpecific(addDeck("Test Deck"))
-            insertReminders(count = 12, scope = scope)
-            val binding =
-                commitScheduleReminders(
-                    fragmentManager = deckPicker.supportFragmentManager,
-                    containerId = R.id.studyoptions_fragment,
-                    host = FragmentHost.STUDY_OPTIONS_FRAGMENT,
-                    scope = scope,
-                )
+            val deckId = addDeck("Test Deck")
+            insertReminders(count = 12, scope = ReviewReminderScope.DeckSpecific(deckId))
+            val binding = showSidePaneReminders(deckPicker, deckId)
             // a camera cutout beside the deck list: the deck list clears it, the panel must not
             // clear it a second time
             deckPicker.simulateSystemBars(cutoutLeft = 32.dp)
-            captureScreen("studyOptionsFragmentHost_systemBars")
+            captureScreen("deckPickerSidePaneHost_systemBars")
             // scrolled to the end: the last reminder must clear the navigation bar band
             binding.recyclerView.scrollToLastPosition()
             advanceRobolectricLooper()
-            captureScreen("studyOptionsFragmentHost_systemBars_scrolledToEnd")
+            captureScreen("deckPickerSidePaneHost_systemBars_scrolledToEnd")
         }
         BackupManagerTestUtilities.reset()
     }
 
     @Test
-    fun `study options fragment host troubleshooting with system bars`() {
+    fun `deck picker side pane host troubleshooting with system bars`() {
         setTabletQualifiers()
         withDeckPicker(deckCount = 1, withCards = true) { deckPicker ->
+            showSidePaneReminders(deckPicker, addDeck("Test Deck"))
             val binding =
                 commitTroubleshooting(
-                    fragmentManager = deckPicker.supportFragmentManager,
-                    containerId = R.id.studyoptions_fragment,
-                    host = FragmentHost.STUDY_OPTIONS_FRAGMENT,
+                    fragmentManager = deckPicker.sidePane!!.overlay!!.parentFragmentManager,
+                    containerId = R.id.side_pane_overlay_content,
+                    host = FragmentHost.DECK_PICKER_SIDE_PANE,
                 )
             deckPicker.simulateSystemBars(cutoutLeft = 32.dp)
             binding.scrollView.scrollTo(0, binding.scrollView.getChildAt(0).bottom)
             advanceRobolectricLooper()
-            captureScreen("studyOptionsFragmentHost_troubleshooting_systemBars")
+            captureScreen("deckPickerSidePaneHost_troubleshooting_systemBars")
         }
         BackupManagerTestUtilities.reset()
     }
@@ -377,6 +369,17 @@ class ReviewRemindersScreenshotTest : ScreenshotTest() {
         repeat(count) { index ->
             insertReminder(ReviewReminderTime(hour = 8 + index, minute = 0), scope = scope)
         }
+    }
+
+    /** Shows [ScheduleRemindersFragment] in the side pane of [deckPicker] and returns its laid-out views */
+    private fun showSidePaneReminders(
+        deckPicker: DeckPicker,
+        deckId: DeckId,
+    ): FragmentScheduleRemindersBinding {
+        val sidePane = requireNotNull(deckPicker.sidePane) { "sidePane" }
+        sidePane.showReminders(deckId)
+        advanceRobolectricLooper()
+        return (sidePane.overlay as ScheduleRemindersFragment).binding
     }
 
     /** Shows [ScheduleRemindersFragment] in [containerId] and returns its laid-out views */

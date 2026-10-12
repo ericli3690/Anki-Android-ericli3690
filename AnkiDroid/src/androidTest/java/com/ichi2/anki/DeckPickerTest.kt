@@ -94,7 +94,7 @@ class DeckPickerTest : InstrumentedTest() {
         assumeTrue(isTablet)
 
         // Check if currently open Fragment is StudyOptionsFragment
-        onView(withId(R.id.studyoptions_fragment))
+        onView(withId(R.id.deck_picker_side_pane))
             .check(ViewAssertions.matches(isDisplayed()))
     }
 }

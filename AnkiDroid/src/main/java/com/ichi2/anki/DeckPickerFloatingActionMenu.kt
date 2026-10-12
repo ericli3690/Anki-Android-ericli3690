@@ -32,7 +32,7 @@ class DeckPickerFloatingActionMenu(
 
     /** Layout deck_picker.xml is attached here */
     private val linearLayout: LinearLayout = homescreenBinding.deckPickerPane.deckpickerView
-    private val studyOptionsFrame: View? = homescreenBinding.studyoptionsFrame
+    private val studyOptionsFrame: View? = homescreenBinding.deckPickerSidePane
 
     // Colors values obtained from attributes
     private val fabNormalColor = MaterialColors.getColor(binding.fabMain, R.attr.fab_normal)

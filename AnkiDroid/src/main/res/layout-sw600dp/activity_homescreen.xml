@@ -35,7 +35,7 @@
                 android:layout_height="match_parent" />
 
             <androidx.fragment.app.FragmentContainerView
-                android:id="@+id/studyoptions_fragment"
+                android:id="@+id/deck_picker_side_pane"
                 android:layout_weight="2"
                 android:layout_width="1dip"
                 android:layout_height="match_parent"/>
