@@ -2079,7 +2079,6 @@ open class DeckPicker :
         return true
     }
 
-    @NeedsTest("Instrumented tests for review reminders")
     private fun tryShowScheduleRemindersPanel(deckId: DeckId): Boolean {
         val sidePane = sidePane ?: return false
         if (binding.deckPickerSidePane?.isVisible != true) return false
@@ -2122,7 +2121,6 @@ open class DeckPicker :
         reviewLauncher.navigate(StudyOptionsDestination)
     }
 
-    @NeedsTest("Instrumented tests for review reminders")
     private fun openScheduleReminders(deckId: DeckId) {
         if (tryShowScheduleRemindersPanel(deckId)) return
 

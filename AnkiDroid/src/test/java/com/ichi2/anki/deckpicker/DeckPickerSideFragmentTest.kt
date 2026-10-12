@@ -21,7 +21,10 @@ import com.ichi2.anki.RobolectricTest
 import com.ichi2.anki.StudyOptionsFragment
 import com.ichi2.anki.common.preferences.sharedPrefs
 import com.ichi2.anki.deckpicker.DeckPickerSideFragment.Content
+import com.ichi2.anki.dialogs.DeckPickerContextMenu.DeckPickerContextMenuOption
+import com.ichi2.anki.dialogs.DeckPickerContextMenuResult
 import com.ichi2.anki.dialogs.SyncErrorDialog
+import com.ichi2.anki.dialogs.setDeckPickerContextMenuResult
 import com.ichi2.anki.observability.ChangeManager
 import com.ichi2.anki.reviewreminders.AddEditReminderDialog
 import com.ichi2.anki.reviewreminders.ReminderTroubleshootingFragment
@@ -354,6 +357,35 @@ class DeckPickerSideFragmentTest : RobolectricTest() {
                 assertThat("deck changed: $deckChanged", scrollY, equalTo(if (deckChanged) 0 else 200))
                 col.decks.select(1L)
             }
+        }
+
+    @Test
+    fun `review reminders open in the side pane from the deck context menu`() =
+        runTest {
+            val anotherDeck = addDeck("Another deck")
+            val deckPicker = startDeckPicker().get()
+
+            deckPicker.supportFragmentManager.setDeckPickerContextMenuResult(
+                DeckPickerContextMenuResult(deckId = anotherDeck, option = DeckPickerContextMenuOption.SCHEDULE_REMINDERS),
+            )
+            advanceRobolectricLooper()
+
+            assertThat(deckPicker.sidePane().content, equalTo(Content.REMINDERS))
+            assertThat(deckPicker.reminders().toolbarSubtitle, equalTo("Another deck"))
+            assertThat("no new screen is started", shadowOf(deckPicker).nextStartedActivity, nullValue())
+        }
+
+    @Test
+    fun `review reminders open in the side pane from the study options menu`() =
+        runTest {
+            val deckPicker = startDeckPicker().get()
+
+            deckPicker.menu().performIdentifierAction(R.id.action_schedule_reminders, 0)
+            advanceRobolectricLooper()
+
+            assertThat(deckPicker.sidePane().content, equalTo(Content.REMINDERS))
+            assertThat(deckPicker.reminders().toolbarSubtitle, equalTo(col.decks.name(col.decks.selected())))
+            assertThat("no new screen is started", shadowOf(deckPicker).nextStartedActivity, nullValue())
         }
 
     private fun startDeckPicker(): ActivityController<DeckPicker> =
