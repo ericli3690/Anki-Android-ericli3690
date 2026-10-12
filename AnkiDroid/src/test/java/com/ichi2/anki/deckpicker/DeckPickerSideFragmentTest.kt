@@ -3,6 +3,7 @@
 package com.ichi2.anki.deckpicker
 
 import android.content.Intent
+import android.os.Bundle
 import android.widget.Button
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
@@ -16,6 +17,7 @@ import com.ichi2.anki.StudyOptionsFragment
 import com.ichi2.anki.common.preferences.sharedPrefs
 import com.ichi2.anki.deckpicker.DeckPickerSideFragment.Content
 import com.ichi2.anki.dialogs.SyncErrorDialog
+import com.ichi2.anki.observability.ChangeManager
 import com.ichi2.anki.reviewreminders.AddEditReminderDialog
 import com.ichi2.anki.reviewreminders.ReminderTroubleshootingFragment
 import com.ichi2.anki.reviewreminders.ReviewReminderScope
@@ -23,6 +25,7 @@ import com.ichi2.anki.reviewreminders.ScheduleRemindersFragment
 import com.ichi2.anki.reviewreminders.ScheduleRemindersFragment.FragmentHost
 import com.ichi2.anki.setIntroductionSlidesShown
 import com.ichi2.anki.settings.Prefs
+import com.ichi2.anki.tryUndo
 import com.ichi2.anki.utils.ext.DIALOG_FRAGMENT_TAG
 import com.ichi2.anki.utils.showDialogFragment
 import com.ichi2.testutils.BackupManagerTestUtilities
@@ -196,6 +199,104 @@ class DeckPickerSideFragmentTest : RobolectricTest() {
             deckPicker.sidePane().showStudyOptions()
             advanceRobolectricLooper()
             assertThat(deckPicker.menu().findItem(R.id.action_custom_study), notNullValue())
+        }
+
+    @Test
+    fun `undoing a deck rename closes reminders`() =
+        runTest {
+            val deckId = col.decks.selected()
+            col.decks.rename(deckId, "Renamed")
+            val deckPicker = startDeckPicker().get()
+            deckPicker.sidePane().showReminders(deckId)
+            advanceRobolectricLooper()
+
+            tryUndo()
+            advanceRobolectricLooper()
+
+            assertThat(col.decks.name(deckId), equalTo("Default"))
+            assertThat(deckPicker.sidePane().content, equalTo(Content.STUDY_OPTIONS))
+        }
+
+    @Test
+    fun `undoing a deck rename closes troubleshooting and reminders`() =
+        runTest {
+            val deckId = col.decks.selected()
+            col.decks.rename(deckId, "Renamed")
+            val deckPicker = startDeckPicker().get()
+            deckPicker.sidePane().apply {
+                showReminders(deckId)
+                showTroubleshooting()
+            }
+            advanceRobolectricLooper()
+
+            tryUndo()
+            advanceRobolectricLooper()
+
+            val sidePane = deckPicker.sidePane()
+            assertThat(sidePane.content, equalTo(Content.STUDY_OPTIONS))
+            assertThat(sidePane.overlay, nullValue())
+            assertThat("study options is uncovered", requireNotNull(sidePane.studyOptions).isHidden, equalTo(false))
+        }
+
+    @Test
+    fun `deleting the deck closes reminders`() =
+        runTest {
+            val anotherDeck = addDeck("Another deck")
+            val deckPicker = startDeckPicker().get()
+            deckPicker.sidePane().showReminders(anotherDeck)
+            advanceRobolectricLooper()
+
+            deckPicker.viewModel.deleteDeck(anotherDeck).join()
+            advanceRobolectricLooper()
+
+            assertThat(deckPicker.sidePane().content, equalTo(Content.STUDY_OPTIONS))
+        }
+
+    @Test
+    fun `sync closes reminders`() =
+        runTest {
+            val deckPicker = startDeckPicker().get()
+            deckPicker.sidePane().showReminders(col.decks.selected())
+            advanceRobolectricLooper()
+
+            // as performed after a sync
+            ChangeManager.notifySubscribersAllValuesChanged(deckPicker)
+            advanceRobolectricLooper()
+
+            assertThat(deckPicker.sidePane().content, equalTo(Content.STUDY_OPTIONS))
+        }
+
+    @Test
+    fun `decks changing while the deck picker is in the background close reminders on return`() =
+        runTest {
+            val controller = startDeckPicker()
+            controller.get().sidePane().showReminders(col.decks.selected())
+            advanceRobolectricLooper()
+            // for example, the user opened the browser
+            controller.pause().stop().saveInstanceState(Bundle())
+
+            ChangeManager.notifySubscribersAllValuesChanged()
+            advanceRobolectricLooper()
+            assertThat("closing is deferred", controller.get().sidePane().content, equalTo(Content.REMINDERS))
+
+            controller.restart().resume()
+            advanceRobolectricLooper()
+            assertThat(controller.get().sidePane().content, equalTo(Content.STUDY_OPTIONS))
+        }
+
+    @Test
+    fun `collapsing a deck keeps reminders`() =
+        runTest {
+            val parent = addDeck("Parent")
+            addDeck("Parent::Child")
+            val deckPicker = startDeckPicker().get()
+            deckPicker.sidePane().showReminders(parent)
+            advanceRobolectricLooper()
+
+            deckPicker.viewModel.toggleDeckExpand(parent).join()
+            advanceRobolectricLooper()
+
+            assertThat(deckPicker.sidePane().content, equalTo(Content.REMINDERS))
         }
 
     private fun startDeckPicker(): ActivityController<DeckPicker> =

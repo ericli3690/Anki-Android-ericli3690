@@ -11,12 +11,14 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
 import androidx.fragment.app.commitNow
 import androidx.lifecycle.Lifecycle
+import anki.collection.OpChanges
 import com.ichi2.anki.R
 import com.ichi2.anki.StudyOptionsFragment
 import com.ichi2.anki.StudyOptionsFragment.Companion.registerStudyOptionsAddEditReminderHandler
 import com.ichi2.anki.StudyOptionsFragment.Companion.registerStudyOptionsStudyHandler
 import com.ichi2.anki.StudyOptionsFragment.Companion.setStudyOptionsStudyResult
 import com.ichi2.anki.libanki.DeckId
+import com.ichi2.anki.observability.ChangeManager
 import com.ichi2.anki.reviewreminders.ReviewReminderScope
 import com.ichi2.anki.reviewreminders.ScheduleRemindersFragment
 import timber.log.Timber
@@ -29,9 +31,14 @@ import timber.log.Timber
  *   view and scroll position survive while it is covered.
  * - **overlay**: empty, or an [Overlay] covering the base, showing review reminders.
  *
+ * The overlay is closed when a collection operation changes decks (for example, undoing a rename,
+ * deleting a deck or syncing), as it may display outdated deck information.
+ *
  * @see Content
  */
-class DeckPickerSideFragment : Fragment(R.layout.fragment_deck_picker_side) {
+class DeckPickerSideFragment :
+    Fragment(R.layout.fragment_deck_picker_side),
+    ChangeManager.Subscriber {
     /** What the pane is showing. Derived from the overlay layer, which the FragmentManager restores. */
     enum class Content {
         STUDY_OPTIONS,
@@ -86,6 +93,7 @@ class DeckPickerSideFragment : Fragment(R.layout.fragment_deck_picker_side) {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         selectedDeckId = savedInstanceState?.getLong(STATE_SELECTED_DECK_ID)?.takeIf { it != 0L }
+        ChangeManager.subscribe(this)
 
         childFragmentManager.registerStudyOptionsStudyHandler(this) {
             // the DeckPicker opens the study screen
@@ -188,6 +196,15 @@ class DeckPickerSideFragment : Fragment(R.layout.fragment_deck_picker_side) {
             }
         }
         updateBackCallback()
+    }
+
+    override fun opExecuted(
+        changes: OpChanges,
+        handler: Any?,
+    ) {
+        if (!changes.deck || overlayHost == null) return
+        Timber.i("Side pane: decks changed, closing review reminders")
+        closeOverlay()
     }
 
     /** Back is handled by the pane only while the overlay is displayed */
