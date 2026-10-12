@@ -627,12 +627,12 @@ open class DeckPicker :
             handleContextMenuSelection(result.option, result.deckId)
         }
 
-        registerStudyOptionsStudyHandler {
+        supportFragmentManager.registerStudyOptionsStudyHandler(this) {
             Timber.d("Opening study screen from DeckPicker's study options panel")
             openReviewer()
         }
 
-        registerStudyOptionsAddEditReminderHandler { did: DeckId ->
+        supportFragmentManager.registerStudyOptionsAddEditReminderHandler(this) { did: DeckId ->
             Timber.d("Opening review reminders screen from DeckPicker's study options panel")
             openScheduleReminders(did)
         }

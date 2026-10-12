@@ -34,10 +34,10 @@ import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import anki.collection.OpChanges
 import com.ichi2.anki.CollectionManager.TR
@@ -52,7 +52,6 @@ import com.ichi2.anki.settings.Prefs
 import com.ichi2.anki.ui.internationalization.sentenceCase
 import com.ichi2.anki.utils.doOnApplyWindowInsets
 import com.ichi2.anki.utils.ext.launchCollectionInLifecycleScope
-import com.ichi2.anki.utils.ext.setFragmentResultListener
 import com.ichi2.anki.utils.ext.showDialogFragment
 import com.ichi2.ui.CollectionMediaImageGetter
 import org.intellij.lang.annotations.Language
@@ -536,22 +535,36 @@ class StudyOptionsFragment :
             )
         }
 
-        fun FragmentActivity.registerStudyOptionsStudyHandler(action: () -> Unit) {
-            setFragmentResultListener(REQUEST_STUDY_OPTIONS_STUDY) { _, _ ->
+        /**
+         * Listens for the study request from a [StudyOptionsFragment] added to this [FragmentManager].
+         * Fragment results are only delivered on the manager they are sent on.
+         */
+        fun FragmentManager.registerStudyOptionsStudyHandler(
+            owner: LifecycleOwner,
+            action: () -> Unit,
+        ) {
+            setFragmentResultListener(REQUEST_STUDY_OPTIONS_STUDY, owner) { _, _ ->
                 Timber.i("Received fragment result from study options fragment to start studying")
                 action()
             }
         }
 
-        fun FragmentActivity.registerStudyOptionsAddEditReminderHandler(action: (did: DeckId) -> Unit) {
-            setFragmentResultListener(REQUEST_STUDY_OPTIONS_REVIEW_REMINDERS) { _, bundle ->
+        /**
+         * Listens for the review reminders request from a [StudyOptionsFragment] added to this [FragmentManager].
+         * Fragment results are only delivered on the manager they are sent on.
+         */
+        fun FragmentManager.registerStudyOptionsAddEditReminderHandler(
+            owner: LifecycleOwner,
+            action: (did: DeckId) -> Unit,
+        ) {
+            setFragmentResultListener(REQUEST_STUDY_OPTIONS_REVIEW_REMINDERS, owner) { _, bundle ->
                 Timber.i("Received fragment result from study options fragment for adding / editing review reminders")
                 val did = bundle.getLong(RESULT_REVIEW_REMINDERS_DECK_ID)
                 action(did)
             }
         }
 
-        private fun FragmentManager.setStudyOptionsStudyResult() {
+        internal fun FragmentManager.setStudyOptionsStudyResult() {
             setFragmentResult(REQUEST_STUDY_OPTIONS_STUDY, Bundle())
         }
 

@@ -82,7 +82,7 @@ class StudyOptionsActivity :
                     (currentFragment as? StudyOptionsFragment)?.refreshInterface()
             }
         }
-        registerStudyOptionsStudyHandler {
+        supportFragmentManager.registerStudyOptionsStudyHandler(this) {
             Timber.i("Opening study screen from study options screen")
             val reviewer = with(DeferredNavigation) { ReviewDeckDestination.CurrentDeck.toIntent() }
             // go back to DeckPicker after studying when not in tablet mode
@@ -90,7 +90,7 @@ class StudyOptionsActivity :
             startActivity(reviewer)
             finish()
         }
-        registerStudyOptionsAddEditReminderHandler { did: DeckId ->
+        supportFragmentManager.registerStudyOptionsAddEditReminderHandler(this) { did: DeckId ->
             Timber.i("Opening review reminders screen from study options screen")
             supportFragmentManager.commit {
                 replace(
